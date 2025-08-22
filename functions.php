@@ -295,6 +295,8 @@ add_action('template_redirect', function() {
 
 
 
+
+
 /**
  * Shortcode para mostrar la cantidad de productos vendidos por fecha seleccionada
  * @param array $atts Atributos del shortcode
@@ -306,6 +308,16 @@ function seats_remaining_shortcode($atts) {
     if (!$post_id || get_post_type($post_id) !== 'course') {
         error_log('Seats Remaining Shortcode: Invalid post ID or not a course post, ID: ' . $post_id);
         return '<p>Error: This shortcode must be used on a course page.</p>';
+    }
+
+    // Check if only course price is filled (no webinar/enroll product)
+    $course_product_link = get_field('field_6821879221940', $post_id);
+    $enroll_product_link = get_field('field_6821879e21941', $post_id);
+    
+    // If only course product exists (no webinar/enroll product), hide this shortcode
+    if (!empty($course_product_link) && empty($enroll_product_link)) {
+        error_log('Seats Remaining Shortcode: Only course product exists, hiding seats remaining');
+        return '<div style="display: none;"></div>';
     }
 
     // Get available start dates and stocks from ACF repeater field
@@ -335,7 +347,6 @@ function seats_remaining_shortcode($atts) {
     error_log('Seats Remaining Shortcode: Default date set to ' . $default_date);
 
     // Get enroll product ID
-    $enroll_product_link = get_field('field_6821879e21941', $post_id);
     $enroll_product_id = 0;
     if (!empty($enroll_product_link)) {
         $url_parts = parse_url($enroll_product_link, PHP_URL_QUERY);
@@ -592,6 +603,7 @@ add_shortcode('seats_remaining', 'seats_remaining_shortcode');
 
 
 
+
 /**
  * Button window selectable boxes with overlay
  */
@@ -600,7 +612,7 @@ function popup_selectable_boxes_shortcode() {
     ob_start();
     ?>
     <div style="display: flex; justify-content: center; align-items: center; margin: 0;">
-        <button onclick="showPopup()" style="padding: 10px 20px; font-size: 16px; cursor: pointer; background-color: #F22EBE; border: none; border-radius: 5px;">Enroll now</button>
+        <button onclick="showPopup()" style="padding: 10px 20px; font-size: 16px; cursor: pointer; background-color: #F22EBE; border: none; border-radius: 5px;">Buy now</button>
         <div id="overlay" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0, 0, 0, 0.2); z-index: 9998;"></div>
         <div id="popup" style="display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); font-family: Arial, sans-serif; font-size: 24px; z-index: 9999; justify-content: center;">
             <img src="https://academy.arcanalabs.ai/wp-content/uploads/2025/06/close-icon-selectable-boxes.png" alt="Close" style="position: absolute; top: -30px; right: 0px; width: 24px; height: 24px; cursor: pointer; filter: invert(100%);" onclick="closePopup()">
@@ -928,11 +940,22 @@ add_filter('acf/load_value', 'set_default_acf_price_fields', 10, 3);
 
 
 
+
 /**
- * Shortcode to display webinar product prices with sale price below regular price
+ * Webinar Price Shortcode
+ * 
+ * Displays webinar/course prices with support for ACF fields and WooCommerce products
+ */
+
+/**
+ * Shortcode to display course or webinar prices
+ * Priority: If course prices exist, show them. Otherwise, show webinar prices.
  */
 function webinar_price_shortcode($atts) {
-    $atts = shortcode_atts(['course_id' => 0], $atts, 'webinar_price');
+    $atts = shortcode_atts([
+        'course_id' => 0
+    ], $atts, 'webinar_price');
+    
     $course_page_id = absint($atts['course_id']);
 
     // Use current post ID if not provided
@@ -945,23 +968,72 @@ function webinar_price_shortcode($atts) {
         return '';
     }
 
-    // Get related stm_course_id
-    $stm_course_id = get_post_meta($course_page_id, 'related_stm_course_id', true);
-    if (!$stm_course_id) {
-        error_log('webinar_price_shortcode: No related stm_course_id for course_page_id: ' . $course_page_id);
-        return '';
+    // First check for course prices (higher priority)
+    $course_regular_price = get_field('field_681ccc6eb123a', $course_page_id);  // course_price
+    $course_sale_price = get_field('field_689f3a6f5b266', $course_page_id);     // course_sales_price
+    
+    // Then check for webinar prices
+    $webinar_regular_price = get_field('field_6853a215dbd49', $course_page_id);  // webinar_regular_price
+    $webinar_sale_price = get_field('field_6853a231dbd4a', $course_page_id);     // webinar_sale_price
+    
+    // Determine which prices to use (course prices have priority)
+    if (!empty($course_regular_price)) {
+        $regular_price = $course_regular_price;
+        $sale_price = $course_sale_price;
+        $price_type = 'course';
+        $fallback_product_type = 'course';
+    } elseif (!empty($webinar_regular_price)) {
+        $regular_price = $webinar_regular_price;
+        $sale_price = $webinar_sale_price;
+        $price_type = 'webinar';
+        $fallback_product_type = 'webinar';
+    } else {
+        // No ACF prices found, need to check WooCommerce products
+        $regular_price = null;
+        $sale_price = null;
+        $price_type = null;
+        $fallback_product_type = null;
     }
+    
+    // If no ACF prices found, check WooCommerce products
+    if (empty($regular_price)) {
+        // Get related stm_course_id
+        $stm_course_id = get_post_meta($course_page_id, 'related_stm_course_id', true);
+        if (!$stm_course_id) {
+            error_log('webinar_price_shortcode: No related stm_course_id for course_page_id: ' . $course_page_id);
+            return '';
+        }
 
-    // Get related webinar product
-    $webinar_product_id = get_post_meta($stm_course_id, 'related_webinar_product_id', true);
-    if (!$webinar_product_id || get_post_type($webinar_product_id) !== 'product') {
-        error_log('webinar_price_shortcode: Invalid or missing webinar_product_id for stm_course_id: ' . $stm_course_id);
-        return '';
+        // First try course product (priority)
+        $course_product_id = get_post_meta($stm_course_id, 'related_course_product_id', true);
+        if ($course_product_id && get_post_type($course_product_id) === 'product') {
+            $course_product_regular = get_post_meta($course_product_id, '_regular_price', true);
+            if (!empty($course_product_regular)) {
+                $regular_price = $course_product_regular;
+                $sale_price = get_post_meta($course_product_id, '_sale_price', true);
+                $price_type = 'course';
+            }
+        }
+        
+        // If still no price, try webinar product
+        if (empty($regular_price)) {
+            $webinar_product_id = get_post_meta($stm_course_id, 'related_webinar_product_id', true);
+            if ($webinar_product_id && get_post_type($webinar_product_id) === 'product') {
+                $webinar_product_regular = get_post_meta($webinar_product_id, '_regular_price', true);
+                if (!empty($webinar_product_regular)) {
+                    $regular_price = $webinar_product_regular;
+                    $sale_price = get_post_meta($webinar_product_id, '_sale_price', true);
+                    $price_type = 'webinar';
+                }
+            }
+        }
+        
+        // If still no price found
+        if (empty($regular_price)) {
+            error_log('webinar_price_shortcode: No prices found for course_page_id: ' . $course_page_id);
+            return '';
+        }
     }
-
-    // Get prices from product (fallback to ACF if needed)
-    $regular_price = get_post_meta($webinar_product_id, '_regular_price', true) ?: 0;
-    $sale_price = get_post_meta($webinar_product_id, '_sale_price', true);
 
     // Format prices using WooCommerce, appending USD
     $formatted_regular_price = wc_price($regular_price) . ' USD';
@@ -981,7 +1053,15 @@ function webinar_price_shortcode($atts) {
     }
     $output .= '</div>';
 
-    error_log('webinar_price_shortcode: Rendered for course_page_id: ' . $course_page_id . ', regular_price: ' . $regular_price . ', sale_price: ' . ($sale_price !== '' ? $sale_price : 'none'));
+    // Determine price source for logging
+    $price_source = '';
+    if ($price_type === 'course') {
+        $price_source = !empty($course_regular_price) ? 'ACF Course' : 'Course Product';
+    } else {
+        $price_source = !empty($webinar_regular_price) ? 'ACF Webinar' : 'Webinar Product';
+    }
+    
+    error_log('webinar_price_shortcode: Rendered for course_page_id: ' . $course_page_id . ', type: ' . $price_type . ', source: ' . $price_source . ', regular_price: ' . $regular_price . ', sale_price: ' . ($sale_price !== '' ? $sale_price : 'none'));
     return $output;
 }
 add_shortcode('webinar_price', 'webinar_price_shortcode');
@@ -1000,49 +1080,47 @@ function webinar_price_shortcode_styles() {
             }
             .webinar-price .regular-price del {
                 color: #999;
-                text-decoration: line-through;
-                font-size: 18px; /* Strikethrough regular price always 18px */
+                font-weight: normal;
             }
             .webinar-price .sale-price {
-                display: block;
-                font-size: 30px; /* Sale price for desktop and popup */
                 color: #FFF;
+                font-weight: normal;
+                display: block;
             }
-            .webinar-price .regular-price:not(.sale-price) {
-                font-size: 30px; /* Regular price when no sale for desktop and popup */
+            .webinar-price .desktop-price {
+                display: block;
             }
             .webinar-price .lowest-price-mobile {
-                display: none; /* Hidden by default */
-                font-size: 20px; /* Lowest price in sticky CTA on mobile */
-                color: #FFF; /* White for sticky CTA */
+                display: none;
             }
-            .selectable-box-container .webinar-price .lowest-price-mobile,
-            .box-container .webinar-price .lowest-price-mobile {
-                display: none !important; /* Always hidden in selectable-box-container and box-container */
-            }
-            .selectable-box-container .webinar-price .desktop-price,
-            .box-container .webinar-price .desktop-price {
-                display: block !important; /* Always show regular and sale prices in selectable-box-container and box-container */
-            }
-            #popup .webinar-price .lowest-price-mobile {
-                display: none !important; /* Always hidden in popup */
-            }
-            #popup .webinar-price .desktop-price {
-                display: block !important; /* Always show regular and sale prices in popup */
-            }
-            @media screen and (max-width: 767px) {
-                .sticky-cta .webinar-price .desktop-price {
-                    display: none !important; /* Hide regular and sale prices in sticky-cta on mobile */
+            @media (max-width: 767px) {
+                .webinar-price .desktop-price {
+                    display: none;
                 }
-                .sticky-cta .webinar-price .lowest-price-mobile {
-                    display: block !important; /* Show only lowest price in sticky-cta on mobile */
+                .webinar-price .lowest-price-mobile {
+                    display: block;
+                    color: #FFF;
+                    font-weight: 400;
                 }
+            }
+            /* Ensure webinar price has correct text color in boxes */
+            .box-option .webinar-price .woocommerce-Price-amount {
+                color: #FFF !important;
+            }
+            .box-option .webinar-price del .woocommerce-Price-amount {
+                color: #999 !important;
+            }
+            /* Fix for Buy Course box */
+            .box-buy-course .webinar-price .woocommerce-Price-amount {
+                color: #FFF !important;
+            }
+            .box-buy-course .webinar-price del .woocommerce-Price-amount {
+                color: #999 !important;
             }
         ');
     }
 }
 add_action('wp_enqueue_scripts', 'webinar_price_shortcode_styles');
-
 
 
 
