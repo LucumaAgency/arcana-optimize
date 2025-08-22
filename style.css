@@ -1,0 +1,59 @@
+/**
+ * Template: ms-lms-starter-theme
+ * Theme Name: MasterStudy Templates Child
+ * Theme URI: https://starter.stylemixthemes.com/
+ * Author: StylemixThemes
+ * Author URI: https://stylemixthemes.com/
+ * Description: MasterStudy Templates Child Theme is the child theme for the MasterStudy Templates. With this child theme, you can customize your eLearning website appearance without changing the original templates.
+ * License: GNU General Public License v2 or later
+ * License URI: http://www.gnu.org/licenses/gpl-2.0.html
+ * Tags: classes, courses, Education, education center, e-commerce, learning center, tutoring, teaching, study, studying, learning, lessons, instructor, teacher, mentor
+ * Text Domain: starter-text-domain
+ * Version: 1.0.0
+ */
+
+
+.nav-external-icon {
+    height: 16px;
+    margin-left: 5px;
+    vertical-align: middle;
+    fill: white !important;
+    transition: fill 0.3s ease;
+}
+.nav-external-icon:hover {
+    fill: pink;
+}
+
+.elementor-57669 .elementor-element.elementor-element-3429b1db #wfacp-e-form .wfacp-coupon-section .wfacp-coupon-page p.wfacp-form-control-wrapper .wfacp-form-control {
+    color: #ffffff!important;
+}
+
+
+
+/* Attempt color change checkout button (blue) */
+
+.wfacp-order-place-btn-wrap #place_order{
+background-color:#DE04A4!important;
+}
+
+.launch-subline{
+	font-size: 14px;
+}
+
+.launch-terms{
+	font-size: 12px;
+	margin-top: -20px;
+}
+
+/* pop up selectable boxes */
+#popup .box-container .course-launch{
+max-width:100%!important;
+}
+
+/* editor pages acf fields*/
+.acf-field{
+background-color: black!important;
+    color:red!important;
+}
+
+
