@@ -1,0 +1,1 @@
+analizar plugins y functions
